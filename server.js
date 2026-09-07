@@ -54,6 +54,17 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ ok: true, t: "hi" }));
+  ws.on("message", (raw) => {
+    let m;
+    try { m = JSON.parse(String(raw)); } catch (_) { return; }
+    if (m && m.t === "name" && m.name) {
+      ws.name = String(m.name).slice(0, 16);
+      const names = [];
+      wss.clients.forEach((c) => { if (c.name) names.push(c.name); });
+      const payload = JSON.stringify({ t: "peers", who: names });
+      wss.clients.forEach((c) => { if (c.readyState === 1) c.send(payload); });
+    }
+  });
 });
 
 server.listen(port);
