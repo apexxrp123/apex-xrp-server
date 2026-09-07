@@ -2,16 +2,29 @@ const http = require("http");
 const port = process.env.PORT || 3000;
 let n = 1;
 let last = null;
+const who = [];
 http.createServer((req, res) => {
   res.writeHead(200, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
   });
-  if (req.url.indexOf("/den/last") === 0) {
+  const url = new URL(req.url, "http://localhost");
+  if (url.pathname === "/hello") {
+    const name = (url.searchParams.get("name") || "hunter").slice(0, 16);
+    who.push(name);
+    if (who.length > 20) who.shift();
+    res.end(JSON.stringify({ ok: true, name: name, count: who.length }));
+    return;
+  }
+  if (url.pathname === "/who") {
+    res.end(JSON.stringify({ ok: true, who: who }));
+    return;
+  }
+  if (url.pathname === "/den/last") {
     res.end(JSON.stringify({ ok: true, match: last }));
     return;
   }
-  if (req.url.indexOf("/den") === 0) {
+  if (url.pathname === "/den") {
     last = "den-" + n++;
     res.end(JSON.stringify({ ok: true, match: last }));
     return;
