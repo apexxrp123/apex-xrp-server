@@ -71,7 +71,15 @@ wss.on("connection", (ws) => {
         x: Number(m.x) || 0,
         y: Number(m.y) || 0,
     pts: Array.isArray(m.pts) ? m.pts.slice(0, 24) : [],
-        skin: m.skin && typeof m.skin === "object" ? { a: String(m.skin.a || ""), b: String(m.skin.b || ""), p: String(m.skin.p || "") } : null,
+        skin: m.skin && typeof m.skin === "object" ? {
+          a: String(m.skin.a || ""),
+          b: String(m.skin.b || ""),
+          p: String(m.skin.p || ""),
+          sp: String(m.skin.sp || ""),
+          h: String(m.skin.h || ""),
+          t: String(m.skin.t || ""),
+          e: String(m.skin.e || ""),
+        } : null,
       });
       wss.clients.forEach((c) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
