@@ -64,6 +64,17 @@ wss.on("connection", (ws) => {
       const payload = JSON.stringify({ t: "peers", who: names });
       wss.clients.forEach((c) => { if (c.readyState === 1) c.send(payload); });
     }
+        if (m && m.t === "pos") {
+      const payload = JSON.stringify({
+        t: "pos",
+        name: ws.name || m.name,
+        x: Number(m.x) || 0,
+        y: Number(m.y) || 0,
+      });
+      wss.clients.forEach((c) => {
+        if (c !== ws && c.readyState === 1) c.send(payload);
+      });
+    }
   });
 });
 
