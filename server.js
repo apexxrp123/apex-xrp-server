@@ -76,7 +76,7 @@ wss.on("connection", (ws) => {
       });
     }
     if (m && m.t === "dead") {
-      const payload = JSON.stringify({ t: "dead", name: ws.name || m.name, by: m.by || "" });
+      const payload = JSON.stringify({ t: "dead", name: ws.name || m.name, by: m.by || "", stake: Number(m.stake) || 0 });
       wss.clients.forEach((c) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
