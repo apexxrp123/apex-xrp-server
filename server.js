@@ -5,5 +5,9 @@ http.createServer((req, res) => {
     "Content-Type": "text/plain",
     "Access-Control-Allow-Origin": "*",
   });
+  if (req.url.indexOf("/den") === 0) {
+    res.end("den awake\n");
+    return;
+  }
   res.end("apex den server ok\n");
 }).listen(port);
