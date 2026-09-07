@@ -32,9 +32,15 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === "/room/jungle") {
     const name = url.searchParams.get("name");
-    if (name) {
+        if (name) {
       const nme = name.slice(0, 16);
-      if (jungle.indexOf(nme) === -1) jungle.push(nme);
+      if (jungle.indexOf(nme) === -1) {
+        if (jungle.length >= 8) {
+          res.end(JSON.stringify({ ok: false, full: true, room: "jungle", who: jungle }));
+          return;
+        }
+        jungle.push(nme);
+      }
     }
     res.end(JSON.stringify({ ok: true, room: "jungle", who: jungle }));
     return;
