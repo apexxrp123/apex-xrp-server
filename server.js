@@ -21,6 +21,13 @@ http.createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, who: who }));
     return;
   }
+  if (url.pathname === "/room/jungle/leave") {
+    const name = (url.searchParams.get("name") || "").slice(0, 16);
+    const i = jungle.indexOf(name);
+    if (i >= 0) jungle.splice(i, 1);
+    res.end(JSON.stringify({ ok: true, room: "jungle", who: jungle }));
+    return;
+  }
   if (url.pathname === "/room/jungle") {
     const name = url.searchParams.get("name");
     if (name) {
