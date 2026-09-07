@@ -11,7 +11,7 @@ http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname === "/hello") {
     const name = (url.searchParams.get("name") || "hunter").slice(0, 16);
-    who.push(name);
+    if (who.indexOf(name) === -1) who.push(name);
     if (who.length > 20) who.shift();
     res.end(JSON.stringify({ ok: true, name: name, count: who.length }));
     return;
