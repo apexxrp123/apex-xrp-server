@@ -75,6 +75,12 @@ wss.on("connection", (ws) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
     }
+    if (m && m.t === "dead") {
+      const payload = JSON.stringify({ t: "dead", name: ws.name || m.name });
+      wss.clients.forEach((c) => {
+        if (c !== ws && c.readyState === 1) c.send(payload);
+      });
+    }
   });
 });
 
