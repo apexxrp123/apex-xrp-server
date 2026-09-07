@@ -81,6 +81,13 @@ wss.on("connection", (ws) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
     }
+    if (m && m.t === "shed") {
+      const drops = Array.isArray(m.drops) ? m.drops.slice(0, 40) : [];
+      const payload = JSON.stringify({ t: "shed", name: ws.name || m.name, drops: drops });
+      wss.clients.forEach((c) => {
+        if (c !== ws && c.readyState === 1) c.send(payload);
+      });
+    }
   });
 });
 
