@@ -3,6 +3,7 @@ const port = process.env.PORT || 3000;
 let n = 1;
 let last = null;
 const who = [];
+const jungle = [];
 http.createServer((req, res) => {
   res.writeHead(200, {
     "Content-Type": "application/json",
@@ -18,6 +19,15 @@ http.createServer((req, res) => {
   }
   if (url.pathname === "/who") {
     res.end(JSON.stringify({ ok: true, who: who }));
+    return;
+  }
+  if (url.pathname === "/room/jungle") {
+    const name = url.searchParams.get("name");
+    if (name) {
+      const nme = name.slice(0, 16);
+      if (jungle.indexOf(nme) === -1) jungle.push(nme);
+    }
+    res.end(JSON.stringify({ ok: true, room: "jungle", who: jungle }));
     return;
   }
   if (url.pathname === "/den/last") {
