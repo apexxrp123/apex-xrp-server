@@ -1,10 +1,12 @@
 const http = require("http");
+const { WebSocketServer } = require("ws");
 const port = process.env.PORT || 3000;
 let n = 1;
 let last = null;
 const who = [];
 const jungle = [];
-http.createServer((req, res) => {
+
+const server = http.createServer((req, res) => {
   res.writeHead(200, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
@@ -47,4 +49,11 @@ http.createServer((req, res) => {
     return;
   }
   res.end(JSON.stringify({ ok: true, msg: "apex den server ok" }));
-}).listen(port);
+});
+
+const wss = new WebSocketServer({ server });
+wss.on("connection", (ws) => {
+  ws.send(JSON.stringify({ ok: true, t: "hi" }));
+});
+
+server.listen(port);
