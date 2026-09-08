@@ -127,6 +127,17 @@ wss.on("connection", (ws) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
     }
+      if (m && m.t === "chalok") {
+      const payload = JSON.stringify({
+        t: "chalok",
+        from: ws.name || m.from,
+        to: String(m.to || "").slice(0, 16),
+        amt: Number(m.amt) || 1,
+      });
+      wss.clients.forEach((c) => {
+        if (c !== ws && c.readyState === 1) c.send(payload);
+      });
+    }
   });
     ws.on("close", () => {
     const nme = ws.name;
