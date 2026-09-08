@@ -3,9 +3,9 @@ const { WebSocketServer } = require("ws");
 const port = process.env.PORT || 3000;
 let n = 1;
 let last = null;
+let eatenHop = -1;
 const who = [];
 const jungle = [];
-
 const server = http.createServer((req, res) => {
   res.writeHead(200, {
     "Content-Type": "application/json",
@@ -107,7 +107,10 @@ wss.on("connection", (ws) => {
       });
     }
       if (m && m.t === "prey") {
-      const payload = JSON.stringify({ t: "prey", hop: Number(m.hop) || 0, name: ws.name || m.name });
+      const hop = Number(m.hop) || 0;
+      if (hop === eatenHop) return;
+      eatenHop = hop;
+      const payload = JSON.stringify({ t: "prey", hop: hop, name: ws.name || m.name });
       wss.clients.forEach((c) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
