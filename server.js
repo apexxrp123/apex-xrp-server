@@ -89,7 +89,7 @@ wss.on("connection", (ws) => {
         } : null,
       });
       wss.clients.forEach((c) => {
-        if (c !== ws && c.readyState === 1) c.send(payload);
+        if (c !== ws && c.readyState === 1 && c.room === ws.room) c.send(payload);
       });
     }
     if (m && m.t === "dead") {
@@ -97,14 +97,14 @@ wss.on("connection", (ws) => {
       const di = jungle.indexOf(ws.name || m.name || "");
       if (di >= 0) jungle.splice(di, 1);
       wss.clients.forEach((c) => {
-        if (c !== ws && c.readyState === 1) c.send(payload);
+        if (c !== ws && c.readyState === 1 && c.room === ws.room) c.send(payload);
       });
     }
     if (m && m.t === "shed") {
       const drops = Array.isArray(m.drops) ? m.drops.slice(0, 40) : [];
       const payload = JSON.stringify({ t: "shed", name: ws.name || m.name, drops: drops });
       wss.clients.forEach((c) => {
-        if (c !== ws && c.readyState === 1) c.send(payload);
+        if (c !== ws && c.readyState === 1 && c.room === ws.room) c.send(payload);
       });
     }
       if (m && m.t === "prey") {
@@ -113,7 +113,7 @@ wss.on("connection", (ws) => {
       eatenHop = hop;
       const payload = JSON.stringify({ t: "prey", hop: hop, name: ws.name || m.name });
       wss.clients.forEach((c) => {
-        if (c !== ws && c.readyState === 1) c.send(payload);
+        if (c !== ws && c.readyState === 1 && c.room === ws.room) c.send(payload);
       });
     }
   });
