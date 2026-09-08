@@ -65,6 +65,7 @@ wss.on("connection", (ws) => {
     try { m = JSON.parse(String(raw)); } catch (_) { return; }
     if (m && m.t === "name" && m.name) {
       ws.name = String(m.name).slice(0, 16);
+      if (m.room) ws.room = String(m.room).slice(0, 32);
       const names = [];
       wss.clients.forEach((c) => { if (c.name) names.push(c.name); });
       const payload = JSON.stringify({ t: "peers", who: names });
