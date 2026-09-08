@@ -93,6 +93,8 @@ wss.on("connection", (ws) => {
     }
     if (m && m.t === "dead") {
       const payload = JSON.stringify({ t: "dead", name: ws.name || m.name, by: m.by || "", stake: Number(m.stake) || 0 });
+      const di = jungle.indexOf(ws.name || m.name || "");
+      if (di >= 0) jungle.splice(di, 1);
       wss.clients.forEach((c) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
@@ -110,6 +112,14 @@ wss.on("connection", (ws) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
     }
+  });
+    ws.on("close", () => {
+    const nme = ws.name;
+    if (!nme) return;
+    const i = jungle.indexOf(nme);
+    if (i >= 0) jungle.splice(i, 1);
+    const j = who.indexOf(nme);
+    if (j >= 0) who.splice(j, 1);
   });
 });
 
