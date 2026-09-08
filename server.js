@@ -104,6 +104,12 @@ wss.on("connection", (ws) => {
         if (c !== ws && c.readyState === 1) c.send(payload);
       });
     }
+      if (m && m.t === "prey") {
+      const payload = JSON.stringify({ t: "prey", hop: Number(m.hop) || 0, name: ws.name || m.name });
+      wss.clients.forEach((c) => {
+        if (c !== ws && c.readyState === 1) c.send(payload);
+      });
+    }
   });
 });
 
