@@ -3,6 +3,7 @@ const { WebSocketServer } = require("ws");
 const xaman = require("./xaman");
 const denCashout = require("./denCashout");
 const airdropWhitelist = require("./airdropWhitelist");
+const visitCounter = require("./visitCounter");
 
 const port = process.env.PORT || 3000;
 const POT_ADDRESS = process.env.POT_ADDRESS || "";
@@ -226,6 +227,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+
+  // --- Site visitor counter (overall page hits) ---
+  if (req.method === "POST" && url.pathname === "/stats/visit") {
+    try {
+      await readBody(req).catch(() => ({}));
+      const total = visitCounter.hit();
+      sendJson(res, 200, { ok: true, total });
+    } catch (e) {
+      sendJson(res, 500, { ok: false, reason: e.message || "Visit count failed" });
+    }
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/stats/visit") {
+    sendJson(res, 200, { ok: true, total: visitCounter.get() });
+    return;
+  }
 
   // --- APEX airdrop whitelist (level 3+): durable file + CSV/JSON export ---
   if (req.method === "POST" && url.pathname === "/airdrop/whitelist") {
