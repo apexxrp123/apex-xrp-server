@@ -10,6 +10,22 @@ function keysConfigured() {
   return !!(process.env.XUMM_API_KEY && process.env.XUMM_API_SECRET);
 }
 
+function formatXummErr(body, status) {
+  const raw = body && (body.error != null ? body.error : body.message);
+  if (typeof raw === "string" && raw.trim()) return raw.trim().slice(0, 200);
+  if (raw && typeof raw === "object") {
+    const parts = [raw.message, raw.reference, raw.code, raw.error]
+      .filter((x) => typeof x === "string" && x.trim())
+      .map((x) => x.trim());
+    if (parts.length) return parts.join(" — ").slice(0, 200);
+    try {
+      return JSON.stringify(raw).slice(0, 200);
+    } catch (_) {}
+  }
+  if (body && typeof body.code === "string") return body.code;
+  return "Xumm HTTP " + status;
+}
+
 async function xummFetch(path, opts = {}) {
   const key = process.env.XUMM_API_KEY;
   const secret = process.env.XUMM_API_SECRET;
@@ -29,7 +45,7 @@ async function xummFetch(path, opts = {}) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(body.error || body.message || ("Xumm HTTP " + res.status));
+    const err = new Error(formatXummErr(body, res.status));
     err.status = res.status;
     err.body = body;
     throw err;
