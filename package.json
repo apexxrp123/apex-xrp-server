@@ -1,6 +1,6 @@
 {
   "name": "apex-xrp-server",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "main": "server.js",
   "scripts": {
@@ -10,6 +10,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "xrpl": "^4.2.0"
   }
 }
