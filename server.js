@@ -65,6 +65,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  const qrMatch = url.pathname.match(/^\/xaman\/signin\/([^/]+)\/qr$/);
+  if (req.method === "GET" && qrMatch) {
+    if (!xaman.keysConfigured()) {
+      sendJson(res, 503, { ok: false, reason: "XUMM_API_KEY/SECRET not configured" });
+      return;
+    }
+    try {
+      const { buf, contentType } = await xaman.fetchQrPng(qrMatch[1]);
+      cors(res);
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Cache-Control": "no-store",
+        "Content-Length": buf.length,
+      });
+      res.end(buf);
+    } catch (e) {
+      const status = e.code === "NO_KEYS" ? 503 : 404;
+      sendJson(res, status, { ok: false, reason: e.message || "QR not found" });
+    }
+    return;
+  }
+
   const signinMatch = url.pathname.match(/^\/xaman\/signin\/([^/]+)$/);
   if (req.method === "GET" && signinMatch) {
     if (!xaman.keysConfigured()) {

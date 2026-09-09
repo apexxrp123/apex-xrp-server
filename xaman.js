@@ -110,8 +110,30 @@ async function getSignIn(uuid) {
   return { ok: true, address };
 }
 
+
+async function fetchQrPng(uuid) {
+  const data = await xummFetch("/payload/" + encodeURIComponent(uuid), { method: "GET" });
+  const refs = data.refs || {};
+  const qrUrl = refs.qr_png || (uuid ? "https://xumm.app/sign/" + uuid + "_q.png" : null);
+  if (!qrUrl) {
+    const err = new Error("QR not available");
+    err.code = "NO_QR";
+    throw err;
+  }
+  const res = await fetch(qrUrl);
+  if (!res.ok) {
+    const err = new Error("QR fetch failed HTTP " + res.status);
+    err.code = "QR_FETCH";
+    throw err;
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  const ctype = res.headers.get("content-type") || "image/png";
+  return { buf, contentType: ctype.startsWith("image/") ? ctype : "image/png" };
+}
+
 module.exports = {
   keysConfigured,
   createSignIn,
   getSignIn,
+  fetchQrPng,
 };
