@@ -94,7 +94,7 @@ async function getSignIn(uuid) {
     return { ok: false, reason: "Xaman sign-in cancelled" };
   }
   if (!meta.resolved) {
-    return { ok: false, reason: "Xaman sign-in cancelled" };
+    return { ok: false, pending: true, reason: "waiting" };
   }
   if (!meta.signed) {
     return { ok: false, reason: "Xaman sign-in cancelled" };
