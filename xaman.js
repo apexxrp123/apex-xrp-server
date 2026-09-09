@@ -216,17 +216,30 @@ async function getPaymentLock(uuid, { expectDestination, expectAmountDrops, expe
   try {
     tx = await xrplTx(txHash);
   } catch (e) {
+    const msg = String((e && e.message) || "");
+    // Common race: payload signed but RPC has not indexed the hash yet.
+    if (/not found|txnNotFound|unknown|temporar/i.test(msg) || (e && e.code === "XRPL_TX")) {
+      return { ok: false, pending: true, reason: "waiting" };
+    }
     return { ok: false, reason: e.message || "Could not verify tx on Testnet" };
   }
 
+  // Xaman can mark signed before the tx is validated / meta is present.
+  // Treat that as still waiting so the client keeps polling (don't toast "unknown").
+  if (tx.validated === false) {
+    return { ok: false, pending: true, reason: "waiting" };
+  }
   const txMeta = tx.meta || tx.metaData || {};
   const resultCode =
     txMeta.TransactionResult ||
     tx.engine_result ||
     txMeta.engine_result ||
     null;
+  if (!resultCode) {
+    return { ok: false, pending: true, reason: "waiting" };
+  }
   if (resultCode !== "tesSUCCESS") {
-    return { ok: false, reason: "Payment did not succeed on Testnet (" + (resultCode || "unknown") + ")" };
+    return { ok: false, reason: "Payment did not succeed on Testnet (" + resultCode + ")" };
   }
 
   const destination = tx.Destination || (tx.tx_json && tx.tx_json.Destination);
