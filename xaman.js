@@ -100,6 +100,7 @@ async function recoverMaxPayloads(msg, tried) {
     throw err;
   }
   if (tried.has(victim)) {
+    // Same UUID cited again — no new victims to cancel.
     const err = new Error(MAX_PAYLOAD_TIP + " (stuck on " + victim.slice(0, 8) + "…)");
     err.code = "MAX_PAYLOADS";
     throw err;
@@ -107,6 +108,8 @@ async function recoverMaxPayloads(msg, tried) {
   tried.add(victim);
   const cancel = await cancelPayload(victim);
   console.warn("[xaman] Max payloads — cancel", victim, cancel.cancelled, cancel.reason);
+  // Even if this UUID is uncancellable (opened/expired/resolved), keep looping:
+  // the next POST often cites a *different* open payload we can free.
   return !!cancel.cancelled;
 }
 
@@ -191,6 +194,7 @@ async function createPaymentLock({ destination, amountDrops, account }) {
     Destination: destination,
     Amount: drops,
   };
+  // Do not set Account — Xaman fills the signer. Optional account is only for expect checks later.
   void account;
 
   let lastErr;
@@ -299,12 +303,15 @@ async function getPaymentLock(uuid, { expectDestination, expectAmountDrops, expe
     tx = await xrplTx(txHash);
   } catch (e) {
     const msg = String((e && e.message) || "");
+    // Common race: payload signed but RPC has not indexed the hash yet.
     if (/not found|txnNotFound|unknown|temporar/i.test(msg) || (e && e.code === "XRPL_TX")) {
       return { ok: false, pending: true, reason: "waiting" };
     }
     return { ok: false, reason: e.message || "Could not verify tx on Testnet" };
   }
 
+  // Xaman can mark signed before the tx is validated / meta is present.
+  // Treat that as still waiting so the client keeps polling (don't toast "unknown").
   if (tx.validated === false) {
     return { ok: false, pending: true, reason: "waiting" };
   }
@@ -342,6 +349,31 @@ async function getPaymentLock(uuid, { expectDestination, expectAmountDrops, expe
 }
 
 
+let _reserveCache = { at: 0, base: 1000000, inc: 200000 }; // drops; 1 XRP + 0.2 XRP defaults
+async function getLedgerReserves() {
+  const now = Date.now();
+  if (now - _reserveCache.at < 300000) return _reserveCache;
+  try {
+    const res = await fetch(XRPL_RPC_TESTNET, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method: "server_state", params: [{}] }),
+    });
+    const body = await res.json().catch(() => ({}));
+    const vd = (((body.result || {}).state) || {}).validated_ledger || {};
+    const base = Number(vd.reserve_base);
+    const inc = Number(vd.reserve_inc);
+    if (Number.isFinite(base) && base > 0 && Number.isFinite(inc) && inc >= 0) {
+      _reserveCache = { at: now, base, inc };
+    } else {
+      _reserveCache.at = now;
+    }
+  } catch (_) {
+    _reserveCache.at = now;
+  }
+  return _reserveCache;
+}
+
 async function getAccountXrp(address) {
   if (!isClassicAddress(address)) {
     const err = new Error("That is not a classic XRP address.");
@@ -359,7 +391,7 @@ async function getAccountXrp(address) {
   const body = await res.json().catch(() => ({}));
   const result = body.result || {};
   if (result.error === "actNotFound") {
-    return { ok: true, address, xrp: 0, unfunded: true };
+    return { ok: true, address, xrp: 0, spendableXrp: 0, totalXrp: 0, reservedXrp: 0, unfunded: true };
   }
   if (body.error || result.error) {
     const err = new Error(
@@ -368,14 +400,30 @@ async function getAccountXrp(address) {
     err.code = "XRPL_ACC";
     throw err;
   }
-  const drops = result.account_data && result.account_data.Balance;
-  const xrp = Number(drops) / 1e6;
-  if (!Number.isFinite(xrp)) {
+  const data = result.account_data || {};
+  const drops = Number(data.Balance);
+  const ownerCount = Number(data.OwnerCount) || 0;
+  if (!Number.isFinite(drops)) {
     const err = new Error("Could not read Testnet balance");
     err.code = "XRPL_BAL";
     throw err;
   }
-  return { ok: true, address, xrp };
+  const reserves = await getLedgerReserves();
+  const reservedDrops = reserves.base + ownerCount * reserves.inc;
+  const spendableDrops = Math.max(0, drops - reservedDrops);
+  const totalXrp = drops / 1e6;
+  const spendableXrp = spendableDrops / 1e6;
+  const reservedXrp = reservedDrops / 1e6;
+  // xrp = spendable so lobby UI matches what player can actually send.
+  return {
+    ok: true,
+    address,
+    xrp: spendableXrp,
+    spendableXrp,
+    totalXrp,
+    reservedXrp,
+    ownerCount,
+  };
 }
 
 async function fetchQrPng(uuid) {
