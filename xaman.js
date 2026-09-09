@@ -89,9 +89,38 @@ function payloadUuidFromErr(msg) {
   return m ? m[0] : null;
 }
 
+const MAX_PAYLOAD_TIP =
+  "Xumm open-payload cap — reject hanging Apex prompts in Xaman on both phones, or swap to fresh API keys at apps.xumm.dev";
+
+async function recoverMaxPayloads(msg, tried) {
+  const victim = payloadUuidFromErr(msg);
+  if (!victim) {
+    const err = new Error(MAX_PAYLOAD_TIP);
+    err.code = "MAX_PAYLOADS";
+    throw err;
+  }
+  if (tried.has(victim)) {
+    const err = new Error(MAX_PAYLOAD_TIP + " (stuck on " + victim.slice(0, 8) + "…)");
+    err.code = "MAX_PAYLOADS";
+    throw err;
+  }
+  tried.add(victim);
+  const cancel = await cancelPayload(victim);
+  console.warn("[xaman] Max payloads — cancel", victim, cancel.cancelled, cancel.reason);
+  if (!cancel.cancelled) {
+    const err = new Error(
+      MAX_PAYLOAD_TIP + " (" + (cancel.reason || "uncancellable") + ")"
+    );
+    err.code = "MAX_PAYLOADS";
+    throw err;
+  }
+  return true;
+}
+
 async function createSignIn() {
   let lastErr;
-  for (let attempt = 0; attempt < 80; attempt++) {
+  const tried = new Set();
+  for (let attempt = 0; attempt < 40; attempt++) {
     try {
       const created = await xummFetch("/payload", {
         method: "POST",
@@ -120,12 +149,10 @@ async function createSignIn() {
       lastErr = e;
       const msg = String((e && e.message) || "");
       if (!/Max payloads/i.test(msg)) throw e;
-      const victim = payloadUuidFromErr(msg);
-      if (!victim) throw e;
-      await cancelPayload(victim);
+      await recoverMaxPayloads(msg, tried);
     }
   }
-  throw lastErr || new Error("Xumm payload limit — try again shortly");
+  throw lastErr || new Error(MAX_PAYLOAD_TIP);
 }
 
 async function getSignIn(uuid) {
@@ -175,7 +202,8 @@ async function createPaymentLock({ destination, amountDrops, account }) {
 
   let lastErr;
   let created;
-  for (let attempt = 0; attempt < 80; attempt++) {
+  const tried = new Set();
+  for (let attempt = 0; attempt < 40; attempt++) {
     try {
       created = await xummFetch("/payload", {
         method: "POST",
@@ -197,12 +225,10 @@ async function createPaymentLock({ destination, amountDrops, account }) {
       lastErr = e;
       const msg = String((e && e.message) || "");
       if (!/Max payloads/i.test(msg)) throw e;
-      const victim = payloadUuidFromErr(msg);
-      if (!victim) throw e;
-      await cancelPayload(victim);
+      await recoverMaxPayloads(msg, tried);
     }
   }
-  if (!created) throw lastErr || new Error("Xumm payload limit — try again shortly");
+  if (!created) throw lastErr || new Error(MAX_PAYLOAD_TIP);
   const uuid = created.uuid;
   const refs = created.refs || {};
   const next = created.next || {};
