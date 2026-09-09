@@ -1,0 +1,40 @@
+name: decode-restore-balance
+on:
+  push:
+    branches: [main]
+    paths:
+      - "_restore_b64/**"
+      - ".github/workflows/decode-restore-balance.yml"
+  workflow_dispatch:
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble decode and commit
+        run: |
+          set -euo pipefail
+          cat _restore_b64/p*.txt > /tmp/payload.b64
+          python3 - <<'PY2'
+          import zlib, base64, hashlib, json, pathlib
+          raw = pathlib.Path("/tmp/payload.b64").read_text().strip()
+          payload = json.loads(zlib.decompress(base64.b64decode(raw)))
+          for name, meta in payload.items():
+              data = zlib.decompress(base64.b64decode(meta["b64"]))
+              got = hashlib.sha256(data).hexdigest()
+              if got != meta["sha256"]:
+                  raise SystemExit(f"{name} sha mismatch {got} != {meta['sha256']}")
+              if b"PLACEHOLDER" in data:
+                  raise SystemExit(f"{name} contains PLACEHOLDER")
+              pathlib.Path(name).write_bytes(data)
+              print("wrote", name, len(data), got)
+          PY2
+          rm -rf _restore_b64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "no change" && exit 0
+          git commit -m "Restore xaman.js; add GET /xrp/balance for live Testnet wallet"
+          git push
