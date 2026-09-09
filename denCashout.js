@@ -106,9 +106,16 @@ async function verifyLockTx(client, lockTx, hunter, potAddress) {
   if (tt !== "Payment") {
     return { ok: false, reason: "lockTx must be a Payment" };
   }
-  const account = tx.Account || (tx.tx_json && tx.tx_json.Account);
-  const destination = tx.Destination || (tx.tx_json && tx.tx_json.Destination);
-  const amount = tx.Amount != null ? tx.Amount : tx.tx_json && tx.tx_json.Amount;
+  const tj = tx.tx_json || {};
+  const account = tx.Account || tj.Account;
+  const destination = tx.Destination || tj.Destination;
+  // Newer rippled/xrpl.js tx responses often omit Amount and only set DeliverMax.
+  const amount =
+    tx.Amount != null ? tx.Amount :
+    tj.Amount != null ? tj.Amount :
+    tx.DeliverMax != null ? tx.DeliverMax :
+    tj.DeliverMax != null ? tj.DeliverMax :
+    null;
   if (account !== hunter) {
     return { ok: false, reason: "lockTx hunter mismatch" };
   }
