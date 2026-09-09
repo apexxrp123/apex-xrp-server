@@ -16,6 +16,11 @@ jobs:
       - name: Decode denCashout.js Slice 1c
         run: |
           set -euo pipefail
+          # Wait for complete stage (p00-p12 + sha256)
+          if [ ! -f _1c_b64/p12.txt ] || [ ! -f _1c_b64/sha256.txt ]; then
+            echo "incomplete stage — skip"
+            exit 0
+          fi
           EXPECTED=$(tr -d '\n' < _1c_b64/sha256.txt)
           cat _1c_b64/p*.txt | tr -d '\n' | base64 -d > denCashout.js
           test -s denCashout.js
