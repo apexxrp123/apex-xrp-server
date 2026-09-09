@@ -1,8 +1,10 @@
 /**
- * Xaman / Xumm SignIn helpers (Testnet only).
+ * Xaman / Xumm SignIn + Payment lock helpers (Testnet only).
  * Requires env: XUMM_API_KEY, XUMM_API_SECRET
  */
 const XUMM_API = "https://xumm.app/api/v1/platform";
+const XRPL_RPC_TESTNET = "https://s.altnet.rippletest.net:51234";
+const XRPL_WS_TESTNET = "wss://s.altnet.rippletest.net:51233";
 
 function keysConfigured() {
   return !!(process.env.XUMM_API_KEY && process.env.XUMM_API_SECRET);
@@ -92,7 +94,7 @@ async function getSignIn(uuid) {
     return { ok: false, reason: "Xaman sign-in cancelled" };
   }
   if (!meta.resolved) {
-    return { ok: false, pending: true, reason: "waiting" };
+    return { ok: false, reason: "Xaman sign-in cancelled" };
   }
   if (!meta.signed) {
     return { ok: false, reason: "Xaman sign-in cancelled" };
@@ -110,6 +112,142 @@ async function getSignIn(uuid) {
   return { ok: true, address };
 }
 
+async function createPaymentLock({ destination, amountDrops, account }) {
+  if (!isClassicAddress(destination)) {
+    const err = new Error("Invalid destination");
+    err.code = "BAD_DEST";
+    throw err;
+  }
+  const drops = String(amountDrops);
+  const txjson = {
+    TransactionType: "Payment",
+    Destination: destination,
+    Amount: drops,
+  };
+  // Do not set Account — Xaman fills the signer. Optional account is only for expect checks later.
+  void account;
+
+  const created = await xummFetch("/payload", {
+    method: "POST",
+    body: JSON.stringify({
+      txjson,
+      options: {
+        submit: true,
+        expire: 5,
+        force_network: "TESTNET",
+      },
+      custom_meta: {
+        instruction: "Apex Jungle buy-in — 1 XRP Testnet to pot. Mainnet send is off.",
+      },
+    }),
+  });
+  const uuid = created.uuid;
+  const refs = created.refs || {};
+  const next = created.next || {};
+  return {
+    uuid,
+    qr: refs.qr_png || refs.qr_uri || null,
+    deepLink: next.always || refs.deeplink_web || (uuid ? "https://xumm.app/sign/" + uuid : null),
+    push: next.no_push_msg_received || null,
+  };
+}
+
+async function xrplTx(hash) {
+  const res = await fetch(XRPL_RPC_TESTNET, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      method: "tx",
+      params: [{ transaction: hash, binary: false }],
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error("XRPL RPC HTTP " + res.status);
+    err.code = "XRPL_RPC";
+    throw err;
+  }
+  if (body.error || (body.result && body.result.error)) {
+    const msg =
+      (body.result && (body.result.error_message || body.result.error)) ||
+      body.error_message ||
+      body.error ||
+      "tx not found";
+    const err = new Error(String(msg));
+    err.code = "XRPL_TX";
+    err.body = body;
+    throw err;
+  }
+  return body.result || body;
+}
+
+async function getPaymentLock(uuid, { expectDestination, expectAmountDrops, expectAccount } = {}) {
+  const data = await xummFetch("/payload/" + encodeURIComponent(uuid), { method: "GET" });
+  const meta = data.meta || {};
+  const response = data.response || {};
+
+  if (meta.expired) {
+    return { ok: false, reason: "Payment lock expired" };
+  }
+  if (meta.cancelled) {
+    return { ok: false, reason: "Payment lock cancelled" };
+  }
+  if (!meta.resolved) {
+    return { ok: false, pending: true, reason: "waiting" };
+  }
+  if (!meta.signed) {
+    return { ok: false, reason: "Payment lock cancelled" };
+  }
+
+  if (!looksTestnet(meta, response)) {
+    return { ok: false, reason: "Testnet only. Mainnet send is off." };
+  }
+
+  const txHash =
+    response.txid ||
+    response.tx_id ||
+    (meta && meta.txid) ||
+    null;
+  if (!txHash || typeof txHash !== "string") {
+    return { ok: false, reason: "Missing payment tx hash" };
+  }
+
+  let tx;
+  try {
+    tx = await xrplTx(txHash);
+  } catch (e) {
+    return { ok: false, reason: e.message || "Could not verify tx on Testnet" };
+  }
+
+  const txMeta = tx.meta || tx.metaData || {};
+  const resultCode =
+    txMeta.TransactionResult ||
+    tx.engine_result ||
+    txMeta.engine_result ||
+    null;
+  if (resultCode !== "tesSUCCESS") {
+    return { ok: false, reason: "Payment did not succeed on Testnet (" + (resultCode || "unknown") + ")" };
+  }
+
+  const destination = tx.Destination || (tx.tx_json && tx.tx_json.Destination);
+  const amount = tx.Amount != null ? tx.Amount : (tx.tx_json && tx.tx_json.Amount);
+  const account = tx.Account || (tx.tx_json && tx.tx_json.Account) || response.account || null;
+
+  if (expectDestination && destination !== expectDestination) {
+    return { ok: false, reason: "Payment destination mismatch" };
+  }
+  if (expectAmountDrops != null && String(amount) !== String(expectAmountDrops)) {
+    return { ok: false, reason: "Payment amount mismatch" };
+  }
+  if (expectAccount && account !== expectAccount) {
+    return { ok: false, reason: "Payment account mismatch" };
+  }
+  if (!isClassicAddress(account)) {
+    return { ok: false, reason: "That is not a classic XRP address." };
+  }
+
+  return { ok: true, txHash, address: account };
+}
 
 async function fetchQrPng(uuid) {
   const data = await xummFetch("/payload/" + encodeURIComponent(uuid), { method: "GET" });
@@ -133,7 +271,12 @@ async function fetchQrPng(uuid) {
 
 module.exports = {
   keysConfigured,
+  isClassicAddress,
   createSignIn,
   getSignIn,
+  createPaymentLock,
+  getPaymentLock,
   fetchQrPng,
+  XRPL_RPC_TESTNET,
+  XRPL_WS_TESTNET,
 };
