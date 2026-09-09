@@ -1,0 +1,29 @@
+name: decode-freeze-denCashout
+on:
+  push:
+    paths:
+      - '_freeze_b64/**'
+      - '.github/workflows/decode-freeze-denCashout.yml'
+    branches: [main]
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode denCashout.js
+        run: |
+          set -euo pipefail
+          cat _freeze_b64/p*.txt | tr -d '\n' | base64 -d > denCashout.js
+          test -s denCashout.js
+          grep -q verifyLockTx denCashout.js
+          grep -q DRAW_OF_FEE denCashout.js
+          if grep -q PLACEHOLDER denCashout.js; then echo "PLACEHOLDER found"; exit 1; fi
+          rm -rf _freeze_b64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add denCashout.js
+          git add -u _freeze_b64 || true
+          git commit -m "Freeze cashOut: require lockTx, server 90/10, fee 2% to WEEKLY_DRAW_POT" || exit 0
+          git push
