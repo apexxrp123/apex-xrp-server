@@ -1,0 +1,35 @@
+name: decode-1c-fee-resume
+on:
+  push:
+    paths:
+      - '_1c_b64/**'
+      - '.github/workflows/decode-1c-fee-resume.yml'
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode denCashout.js Slice 1c
+        run: |
+          set -euo pipefail
+          EXPECTED=$(tr -d '\n' < _1c_b64/sha256.txt)
+          cat _1c_b64/p*.txt | tr -d '\n' | base64 -d > denCashout.js
+          test -s denCashout.js
+          GOT=$(sha256sum denCashout.js | awk '{print $1}')
+          echo "got=$GOT expected=$EXPECTED"
+          test "$GOT" = "$EXPECTED"
+          grep -q 'Slice 1c' denCashout.js
+          grep -q 'drawPending' denCashout.js
+          grep -q 'prior.feeTxHash = feeTxHash' denCashout.js
+          if grep -q PLACEHOLDER denCashout.js; then echo "PLACEHOLDER found"; exit 1; fi
+          rm -rf _1c_b64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add denCashout.js
+          git add -u _1c_b64 || true
+          git commit -m "Slice 1c: persist feeTxHash before draw (no double treasury)" || exit 0
+          git push
