@@ -129,7 +129,7 @@ async function runCashout(body) {
   try {
     let wallet;
     try {
-      wallet = xrpl.Wallet.fromSeed(seed);
+      wallet = xrpl.Wallet.fromSeed(seed, { algorithm: "secp256k1" });
     } catch (_) {
       return { ok: false, reason: "Invalid pot key configuration" };
     }
