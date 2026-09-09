@@ -100,6 +100,7 @@ async function recoverMaxPayloads(msg, tried) {
     throw err;
   }
   if (tried.has(victim)) {
+    // Same UUID cited again — no new victims to cancel.
     const err = new Error(MAX_PAYLOAD_TIP + " (stuck on " + victim.slice(0, 8) + "…)");
     err.code = "MAX_PAYLOADS";
     throw err;
@@ -107,20 +108,15 @@ async function recoverMaxPayloads(msg, tried) {
   tried.add(victim);
   const cancel = await cancelPayload(victim);
   console.warn("[xaman] Max payloads — cancel", victim, cancel.cancelled, cancel.reason);
-  if (!cancel.cancelled) {
-    const err = new Error(
-      MAX_PAYLOAD_TIP + " (" + (cancel.reason || "uncancellable") + ")"
-    );
-    err.code = "MAX_PAYLOADS";
-    throw err;
-  }
-  return true;
+  // Even if this UUID is uncancellable (opened/expired/resolved), keep looping:
+  // the next POST often cites a *different* open payload we can free.
+  return !!cancel.cancelled;
 }
 
 async function createSignIn() {
   let lastErr;
   const tried = new Set();
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < 80; attempt++) {
     try {
       const created = await xummFetch("/payload", {
         method: "POST",
@@ -149,7 +145,8 @@ async function createSignIn() {
       lastErr = e;
       const msg = String((e && e.message) || "");
       if (!/Max payloads/i.test(msg)) throw e;
-      await recoverMaxPayloads(msg, tried);
+      const freed = await recoverMaxPayloads(msg, tried);
+      if (!freed) await new Promise((r) => setTimeout(r, 150));
     }
   }
   throw lastErr || new Error(MAX_PAYLOAD_TIP);
@@ -203,7 +200,7 @@ async function createPaymentLock({ destination, amountDrops, account }) {
   let lastErr;
   let created;
   const tried = new Set();
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < 80; attempt++) {
     try {
       created = await xummFetch("/payload", {
         method: "POST",
@@ -225,7 +222,8 @@ async function createPaymentLock({ destination, amountDrops, account }) {
       lastErr = e;
       const msg = String((e && e.message) || "");
       if (!/Max payloads/i.test(msg)) throw e;
-      await recoverMaxPayloads(msg, tried);
+      const freed = await recoverMaxPayloads(msg, tried);
+      if (!freed) await new Promise((r) => setTimeout(r, 150));
     }
   }
   if (!created) throw lastErr || new Error(MAX_PAYLOAD_TIP);
