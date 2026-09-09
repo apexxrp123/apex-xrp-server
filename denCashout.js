@@ -225,12 +225,27 @@ async function payFeeLegs(client, wallet, treasury, feeXrp, prior) {
       return { ok: false, reason: "Treasury fee drops invalid" };
     }
     feeTxHash = await submitPayment(client, wallet, treasury, treasuryDrops);
+    // Slice 1c: stamp prior immediately so resume skips treasury even if draw throws next.
+    if (prior && typeof prior === "object") {
+      prior.feeTxHash = feeTxHash;
+    }
   }
 
   if (split.drawAddr && split.drawXrp > 0 && !drawTxHash) {
     const drawDrops = toDrops(split.drawXrp);
     if (drawDrops !== "0") {
-      drawTxHash = await submitPayment(client, wallet, split.drawAddr, drawDrops);
+      try {
+        drawTxHash = await submitPayment(client, wallet, split.drawAddr, drawDrops);
+      } catch (e) {
+        // Do not re-pay treasury on resume — surface feeTxHash for Map persistence.
+        return {
+          ok: false,
+          reason: safeReason(e, "Draw payment failed"),
+          feePending: true,
+          drawPending: true,
+          feeTxHash,
+        };
+      }
     }
   }
 
@@ -303,7 +318,25 @@ async function runCashout(body) {
       try {
         const fees = await payFeeLegs(client, wallet, treasury, prior.fee, prior);
         if (!fees.ok) {
-          return { ok: false, reason: fees.reason || "Fee payment failed", netTxHash: prior.netTxHash, feePending: true };
+          if (fees.feeTxHash) {
+            lockSettlements.set(lockTx, {
+              status: "net_sent",
+              hunter,
+              netTxHash: prior.netTxHash,
+              feeTxHash: fees.feeTxHash,
+              gross: prior.gross,
+              net: prior.net,
+              fee: prior.fee,
+              at: Date.now(),
+            });
+          }
+          return {
+            ok: false,
+            reason: fees.reason || "Fee payment failed",
+            netTxHash: prior.netTxHash,
+            feeTxHash: fees.feeTxHash || undefined,
+            feePending: true,
+          };
         }
         const done = {
           status: "complete",
@@ -328,7 +361,13 @@ async function runCashout(body) {
           resumedFee: true,
         };
       } catch (e) {
-        return { ok: false, reason: safeReason(e, "Fee payment failed"), netTxHash: prior.netTxHash, feePending: true };
+        return {
+          ok: false,
+          reason: safeReason(e, "Fee payment failed"),
+          netTxHash: prior.netTxHash,
+          feeTxHash: prior.feeTxHash || undefined,
+          feePending: true,
+        };
       }
     }
 
@@ -379,10 +418,13 @@ async function runCashout(body) {
       at: Date.now(),
     });
 
+    // Pass the live net_sent record so feeTxHash is stamped on the Map before draw.
+    const netSent = lockSettlements.get(lockTx);
     let fees;
     try {
-      fees = await payFeeLegs(client, wallet, treasury, amounts.fee, null);
+      fees = await payFeeLegs(client, wallet, treasury, amounts.fee, netSent);
     } catch (e) {
+      // Treasury submit threw before hash — leave net_sent without feeTxHash.
       return {
         ok: false,
         reason: safeReason(e, "Fee payment failed"),
@@ -391,7 +433,26 @@ async function runCashout(body) {
       };
     }
     if (!fees.ok) {
-      return { ok: false, reason: fees.reason || "Fee payment failed", netTxHash, feePending: true };
+      // Slice 1c: persist feeTxHash if treasury already landed (draw failed).
+      if (fees.feeTxHash) {
+        lockSettlements.set(lockTx, {
+          status: "net_sent",
+          hunter,
+          netTxHash,
+          feeTxHash: fees.feeTxHash,
+          gross: amounts.gross,
+          net: amounts.net,
+          fee: amounts.fee,
+          at: Date.now(),
+        });
+      }
+      return {
+        ok: false,
+        reason: fees.reason || "Fee payment failed",
+        netTxHash,
+        feeTxHash: fees.feeTxHash || undefined,
+        feePending: true,
+      };
     }
 
     lockSettlements.set(lockTx, {
