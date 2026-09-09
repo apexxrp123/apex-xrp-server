@@ -1,0 +1,48 @@
+name: decode-polish-server
+on:
+  push:
+    branches: [main]
+    paths:
+      - "_polish_srv_b64/**"
+      - ".github/workflows/decode-polish-server.yml"
+  workflow_dispatch:
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode server.js
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          import zlib, base64, hashlib, pathlib
+          root = pathlib.Path("_polish_srv_b64")
+          chunks = []
+          for i in range(4):
+              stem = f"s{i:02d}"
+              parts = sorted(root.glob(f"{stem}_*.txt"), key=lambda p: int(p.stem.split("_")[-1]))
+              whole = root / f"{stem}.txt"
+              if parts:
+                  chunks.append("".join(p.read_text().strip() for p in parts))
+              elif whole.exists():
+                  chunks.append(whole.read_text().strip())
+              else:
+                  raise SystemExit(f"missing {stem}")
+          hx = "".join(chunks)
+          data = zlib.decompress(base64.b64decode(bytes.fromhex(hx).decode("ascii")))
+          expected = (root / "sha256.txt").read_text().strip()
+          got = hashlib.sha256(data).hexdigest()
+          if got != expected:
+              raise SystemExit(f"sha256 mismatch: {got} != {expected}")
+          pathlib.Path("server.js").write_bytes(data)
+          print("wrote", len(data), "bytes", got)
+          PY2
+          rm -rf _polish_srv_b64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "no change" && exit 0
+          git commit -m "Add POST/GET /airdrop/whitelist (level 3+ Testnet)"
+          git push
