@@ -1,6 +1,7 @@
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const xaman = require("./xaman");
+const denCashout = require("./denCashout");
 
 const port = process.env.PORT || 3000;
 const POT_ADDRESS = process.env.POT_ADDRESS || "";
@@ -189,6 +190,20 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       const status = e.code === "NO_KEYS" ? 503 : 502;
       sendJson(res, status, { ok: false, reason: e.message || "Payment lock poll failed" });
+    }
+    return;
+  }
+
+
+  // --- Cash-out ledger send (Step 3 slice 1, Testnet only) ---
+  if (req.method === "POST" && url.pathname === "/den/cashout") {
+    try {
+      const body = await readBody(req).catch(() => ({}));
+      const out = await denCashout.runCashout(body || {});
+      const status = out.ok ? 200 : out.busy ? 429 : 400;
+      sendJson(res, status, out);
+    } catch (e) {
+      sendJson(res, 500, { ok: false, reason: e.message || "Cash-out failed" });
     }
     return;
   }
