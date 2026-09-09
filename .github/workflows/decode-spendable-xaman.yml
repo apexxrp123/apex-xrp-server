@@ -1,0 +1,37 @@
+name: decode-spendable-xaman
+on:
+  push:
+    branches: [main]
+    paths:
+      - "_spendable_b64/**"
+      - ".github/workflows/decode-spendable-xaman.yml"
+  workflow_dispatch:
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble decode and commit xaman.js
+        run: |
+          set -euo pipefail
+          cat _spendable_b64/p*.txt > /tmp/xaman.b64
+          python3 - <<'PY2'
+          import zlib, base64, hashlib, pathlib
+          b = pathlib.Path("/tmp/xaman.b64").read_text().strip()
+          data = zlib.decompress(base64.b64decode(b))
+          expected = pathlib.Path("_spendable_b64/sha256.txt").read_text().strip()
+          got = hashlib.sha256(data).hexdigest()
+          if got != expected:
+              raise SystemExit(f"sha256 mismatch: {got} != {expected}")
+          pathlib.Path("xaman.js").write_bytes(data)
+          print("wrote", len(data), "bytes", got)
+          PY2
+          rm -rf _spendable_b64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "no change" && exit 0
+          git commit -m "Spendable Testnet balance (ledger minus reserve)"
+          git push
