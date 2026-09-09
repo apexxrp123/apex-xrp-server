@@ -1,10 +1,13 @@
 {
   "name": "apex-xrp-server",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "ws": "^8.18.0"
