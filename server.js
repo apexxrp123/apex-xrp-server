@@ -3,6 +3,9 @@ const { WebSocketServer } = require("ws");
 const xaman = require("./xaman");
 
 const port = process.env.PORT || 3000;
+const POT_ADDRESS = process.env.POT_ADDRESS || "";
+const LOCK_DROPS = "1000000";
+const lockExpectAccount = new Map(); // uuid -> classic address (optional)
 let n = 1;
 let last = null;
 let eatenHop = -1;
@@ -99,6 +102,93 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       const status = e.code === "NO_KEYS" ? 503 : 502;
       sendJson(res, status, { ok: false, reason: e.message || "Xaman poll failed" });
+    }
+    return;
+  }
+
+
+  // --- Jungle Payment lock (Step 2 slice 2) ---
+  if (req.method === "POST" && url.pathname === "/den/lock") {
+    if (!xaman.keysConfigured()) {
+      sendJson(res, 503, { ok: false, reason: "XUMM_API_KEY/SECRET not configured" });
+      return;
+    }
+    if (!POT_ADDRESS || !xaman.isClassicAddress(POT_ADDRESS)) {
+      sendJson(res, 503, { ok: false, reason: "POT_ADDRESS not configured" });
+      return;
+    }
+    try {
+      const body = await readBody(req).catch(() => ({}));
+      const address = body && body.address ? String(body.address) : "";
+      if (address && !xaman.isClassicAddress(address)) {
+        sendJson(res, 400, { ok: false, reason: "That is not a classic XRP address." });
+        return;
+      }
+      const out = await xaman.createPaymentLock({
+        destination: POT_ADDRESS,
+        amountDrops: LOCK_DROPS,
+        account: address || undefined,
+      });
+      if (address && out.uuid) lockExpectAccount.set(out.uuid, address);
+      sendJson(res, 200, {
+        uuid: out.uuid,
+        qr: out.qr,
+        deepLink: out.deepLink,
+        amountXrp: 1,
+        destination: POT_ADDRESS,
+      });
+    } catch (e) {
+      const status = e.code === "NO_KEYS" ? 503 : 502;
+      sendJson(res, status, { ok: false, reason: e.message || "Payment lock create failed" });
+    }
+    return;
+  }
+
+  const lockQrMatch = url.pathname.match(/^\/den\/lock\/([^/]+)\/qr$/);
+  if (req.method === "GET" && lockQrMatch) {
+    if (!xaman.keysConfigured()) {
+      sendJson(res, 503, { ok: false, reason: "XUMM_API_KEY/SECRET not configured" });
+      return;
+    }
+    try {
+      const { buf, contentType } = await xaman.fetchQrPng(lockQrMatch[1]);
+      cors(res);
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Cache-Control": "no-store",
+        "Content-Length": buf.length,
+      });
+      res.end(buf);
+    } catch (e) {
+      const status = e.code === "NO_KEYS" ? 503 : 404;
+      sendJson(res, status, { ok: false, reason: e.message || "QR not found" });
+    }
+    return;
+  }
+
+  const lockMatch = url.pathname.match(/^\/den\/lock\/([^/]+)$/);
+  if (req.method === "GET" && lockMatch) {
+    if (!xaman.keysConfigured()) {
+      sendJson(res, 503, { ok: false, reason: "XUMM_API_KEY/SECRET not configured" });
+      return;
+    }
+    if (!POT_ADDRESS || !xaman.isClassicAddress(POT_ADDRESS)) {
+      sendJson(res, 503, { ok: false, reason: "POT_ADDRESS not configured" });
+      return;
+    }
+    try {
+      const uuid = lockMatch[1];
+      const expectAccount = lockExpectAccount.get(uuid);
+      const out = await xaman.getPaymentLock(uuid, {
+        expectDestination: POT_ADDRESS,
+        expectAmountDrops: LOCK_DROPS,
+        expectAccount: expectAccount || undefined,
+      });
+      if (out.ok) lockExpectAccount.delete(uuid);
+      sendJson(res, 200, out);
+    } catch (e) {
+      const status = e.code === "NO_KEYS" ? 503 : 502;
+      sendJson(res, status, { ok: false, reason: e.message || "Payment lock poll failed" });
     }
     return;
   }
